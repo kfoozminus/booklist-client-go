@@ -1,0 +1,11 @@
+package: github.com/kfoozminus/booklist-client-go
+import:
+- package: k8s.io/api
+  subpackages:
+  - apps/v1
+  - core/v1
+- package: k8s.io/client-go
+  subpackages:
+  - kubernetes
+  - tools/clientcmd
+  - util/homedir
