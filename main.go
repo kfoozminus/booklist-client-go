@@ -184,10 +184,10 @@ func main() {
 			},
 			Ports: []corev1.ServicePort{
 				{
-					Name: "exposeds",
-					Port: 1234,
-					//TargetPort: intstr.IntOrString{StrVal: "exposedc"},
-					TargetPort: intstr.IntOrString{IntVal: 4321},
+					Name:       "exposeds",
+					Port:       1234,
+					TargetPort: intstr.IntOrString{StrVal: "exposedc", Type: 1},
+					//TargetPort: intstr.IntOrString{IntVal: 4321},
 				},
 			},
 			Type: corev1.ServiceTypeNodePort,
