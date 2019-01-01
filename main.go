@@ -205,9 +205,66 @@ func main() {
 	waitForEnter()
 	fmt.Println("Updating Deployment...")
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		resultDeployment, getErr := deploymentsClient.Get("booklistkube-client", metav1.GetOption)
-	})
+		resultDeployment, getErr := deploymentsClient.Get("booklistkube-client", metav1.GetOptions{})
+		if getErr != nil {
+			panic(fmt.Errorf("Error in getting the deployment object - %v\n", getErr))
+		}
 
+		resultDeployment.Spec.Replicas = int32ptr(5)
+		resultDeployment.Spec.Template.Spec.Containers[0].Image = "kfoozminus/booklist:ubuntu"
+
+		_, updateErr := deploymentsClient.Update(resultDeployment)
+		return updateErr
+	})
+	if retryErr != nil {
+		panic(fmt.Errorf("Error in updating the deployment object - %v\n", retryErr))
+	}
+	fmt.Println("Updated the deployment!")
+
+	waitForEnter()
+	fmt.Println("Listing PVs...")
+	resultPvList, listErr := pvsClient.List(metav1.ListOptions{})
+	if listErr != nil {
+		panic(fmt.Errorf("Error in listing the pvs - %v\n", listErr))
+	}
+	for _, pv := range resultPvList.Items {
+		name := "None"
+		if pv.Spec.ClaimRef != nil {
+			name = pv.Spec.ClaimRef.Name
+		}
+		fmt.Printf("Persistent Volume - Name %v - Capacity %v - AccessModes %v - ReclaimPolicy %v - Status %v - Claim %v - StorageClass %v - Reason %v\n", pv.Name, pv.Spec.Capacity[corev1.ResourceStorage], pv.Spec.AccessModes, pv.Spec.PersistentVolumeReclaimPolicy, pv.Status.Phase, name, pv.Spec.StorageClassName, pv.Status.Reason)
+	}
+
+	waitForEnter()
+	fmt.Println("Deleting All the objects...")
+	deletePolicy := metav1.DeletePropagationForeground
+	if deleteErr := deploymentsClient.Delete("booklistkube-client", &metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); deleteErr != nil {
+		panic(fmt.Errorf("Error while deleting deployment - %v\n", deleteErr))
+	}
+	fmt.Println("Deleted Deployment")
+
+	if deleteErr := pvcsClient.Delete("task-pv-claim-client", &metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); deleteErr != nil {
+		panic(fmt.Errorf("Error while deleting pvc - %v\n", deleteErr))
+	}
+	fmt.Println("Deleted PVC")
+
+	if deleteErr := pvsClient.Delete("task-pv-volume-client", &metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); deleteErr != nil {
+		panic(fmt.Errorf("Error while deleting pv - %v\n", deleteErr))
+	}
+	fmt.Println("Deleted PV")
+
+	if deleteErr := servicesClient.Delete("booklistkube-client", &metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); deleteErr != nil {
+		panic(fmt.Errorf("Error while deleting service - %v\n", deleteErr))
+	}
+	fmt.Println("Deleted Service")
 }
 
 func waitForEnter() {
