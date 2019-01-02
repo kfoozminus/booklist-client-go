@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	appsv1Kutil "github.com/appscode/kutil/apps/v1"
+	corev1Kutil "github.com/appscode/kutil/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -44,7 +46,7 @@ func main() {
 	pv := &corev1.PersistentVolume{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PersistentVolume",
-			APIVersion: "v1",
+			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "task-pv-volume-client",
@@ -70,14 +72,14 @@ func main() {
 	fmt.Println("Creating Persistent Volume...")
 	resultPv, err := pvsClient.Create(pv)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("Error while creating PV - %v\n", err))
 	}
 	fmt.Printf("Created Persistent Volume - Name: %q, UID: %q\n", resultPv.GetObjectMeta().GetName(), resultPv.GetObjectMeta().GetUID())
 
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PersistentVolumeClaim",
-			APIVersion: "v1",
+			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "task-pv-claim-client",
@@ -95,14 +97,14 @@ func main() {
 	fmt.Println("Creating Persistent Volume Claim...")
 	resultPvc, err := pvcsClient.Create(pvc)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("Error while creating PVC - %v\n", err))
 	}
 	fmt.Printf("Created PVC - Name: %q, UID: %q\n", resultPvc.GetObjectMeta().GetName(), resultPvc.GetObjectMeta().GetUID())
 
 	deployment := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
-			APIVersion: "apps/v1",
+			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "booklistkube-client",
@@ -166,14 +168,14 @@ func main() {
 	fmt.Println("Creating Deployment...")
 	resultDeployment, err := deploymentsClient.Create(deployment)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("Error while creating Deployment - %v\n", err))
 	}
 	fmt.Printf("Created Deployment - Name: %q, UID: %q\n", resultDeployment.GetObjectMeta().GetName(), resultDeployment.GetObjectMeta().GetUID())
 
 	service := &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
-			APIVersion: "v1",
+			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "booklistkube-client",
@@ -198,16 +200,30 @@ func main() {
 	//time.Sleep(60 * time.Second)
 	resultService, err := servicesClient.Create(service)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("Error while creating Service - %v\n", err))
 	}
 	fmt.Printf("Created Service - Name: %q, UID: %q\n", resultService.GetObjectMeta().GetName(), resultService.GetObjectMeta().GetUID())
 
+	//create or patch service via appscode/kutil
+	waitForEnter()
+	fmt.Println("Patching Service...")
+	servicePatch, kutilVerb, kutilErr := corev1Kutil.CreateOrPatchService(clientset, resultService.ObjectMeta, func(serviceTransformed *corev1.Service) *corev1.Service {
+		//serviceTransformed = resultService
+		serviceTransformed.Spec.Ports[0].Port = 2345
+		return serviceTransformed
+	})
+	if kutilErr != nil {
+		panic(fmt.Errorf("Error while patching Service - %v\n", kutilErr))
+	}
+	fmt.Printf("%v - Name: %q, UID: %q\n", kutilVerb, servicePatch.GetObjectMeta().GetName(), servicePatch.GetObjectMeta().GetUID())
+
+	//update the deployment via Update method
 	waitForEnter()
 	fmt.Println("Updating Deployment...")
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		resultDeployment, getErr := deploymentsClient.Get("booklistkube-client", metav1.GetOptions{})
 		if getErr != nil {
-			panic(fmt.Errorf("Error in getting the deployment object - %v\n", getErr))
+			panic(fmt.Errorf("Error while getting the Deployment object - %v\n", getErr))
 		}
 
 		resultDeployment.Spec.Replicas = int32ptr(5)
@@ -217,15 +233,28 @@ func main() {
 		return updateErr
 	})
 	if retryErr != nil {
-		panic(fmt.Errorf("Error in updating the deployment object - %v\n", retryErr))
+		panic(fmt.Errorf("Error in updating the Deployment object - %v\n", retryErr))
 	}
-	fmt.Println("Updated the deployment!")
+	fmt.Printf("Updated Deployment - Name: %q, UID: %q\n", resultDeployment.GetObjectMeta().GetName(), resultDeployment.GetObjectMeta().GetUID())
 
+	//create or patch deployment via appscode/kutil
+	waitForEnter()
+	fmt.Println("Patching Deployment...")
+	deploymentPatch, kutilVerb, kutilErr := appsv1Kutil.CreateOrPatchDeployment(clientset, deployment.ObjectMeta, func(deploymentTransformed *appsv1.Deployment) *appsv1.Deployment {
+		deploymentTransformed.Spec.Replicas = int32ptr(4)
+		return deploymentTransformed
+	})
+	if kutilErr != nil {
+		panic(fmt.Errorf("Error while patching Deployment - %v\n", kutilErr))
+	}
+	fmt.Printf("%v - Name: %q, UID: %q\n", kutilVerb, deploymentPatch.GetObjectMeta().GetName(), deploymentPatch.GetObjectMeta().GetUID())
+
+	//list pv via List Method
 	waitForEnter()
 	fmt.Println("Listing PVs...")
 	resultPvList, listErr := pvsClient.List(metav1.ListOptions{})
 	if listErr != nil {
-		panic(fmt.Errorf("Error in listing the pvs - %v\n", listErr))
+		panic(fmt.Errorf("Error while listing the pvs - %v\n", listErr))
 	}
 	for _, pv := range resultPvList.Items {
 		name := "None"
@@ -235,6 +264,7 @@ func main() {
 		fmt.Printf("Persistent Volume - Name %v - Capacity %v - AccessModes %v - ReclaimPolicy %v - Status %v - Claim %v - StorageClass %v - Reason %v\n", pv.Name, pv.Spec.Capacity[corev1.ResourceStorage], pv.Spec.AccessModes, pv.Spec.PersistentVolumeReclaimPolicy, pv.Status.Phase, name, pv.Spec.StorageClassName, pv.Status.Reason)
 	}
 
+	//delete objects via Delete Method
 	waitForEnter()
 	fmt.Println("Deleting All the objects...")
 	deletePolicy := metav1.DeletePropagationForeground
