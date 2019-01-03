@@ -178,7 +178,8 @@ func main() {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "booklistkube-client",
+			Name:      "booklistkube-client",
+			Namespace: "default",
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
@@ -207,7 +208,7 @@ func main() {
 	//create or patch service via appscode/kutil
 	waitForEnter()
 	fmt.Println("Patching Service...")
-	servicePatch, kutilVerb, kutilErr := corev1Kutil.CreateOrPatchService(clientset, resultService.ObjectMeta, func(serviceTransformed *corev1.Service) *corev1.Service {
+	servicePatch, kutilVerb, kutilErr := corev1Kutil.CreateOrPatchService(clientset, service.ObjectMeta, func(serviceTransformed *corev1.Service) *corev1.Service {
 		//serviceTransformed = resultService
 		serviceTransformed.Spec.Ports[0].Port = 2345
 		return serviceTransformed
@@ -216,6 +217,18 @@ func main() {
 		panic(fmt.Errorf("Error while patching Service - %v\n", kutilErr))
 	}
 	fmt.Printf("%v - Name: %q, UID: %q\n", kutilVerb, servicePatch.GetObjectMeta().GetName(), servicePatch.GetObjectMeta().GetUID())
+
+	//create or patch deployment via appscode/kutil
+	waitForEnter()
+	fmt.Println("Patching Deployment...")
+	deploymentPatch, kutilVerb, kutilErr := appsv1Kutil.CreateOrPatchDeployment(clientset, deployment.ObjectMeta, func(deploymentTransformed *appsv1.Deployment) *appsv1.Deployment {
+		deploymentTransformed.Spec.Replicas = int32ptr(4)
+		return deploymentTransformed
+	})
+	if kutilErr != nil {
+		panic(fmt.Errorf("Error while patching Deployment - %v\n", kutilErr))
+	}
+	fmt.Printf("%v - Name: %q, UID: %q\n", kutilVerb, deploymentPatch.GetObjectMeta().GetName(), deploymentPatch.GetObjectMeta().GetUID())
 
 	//update the deployment via Update method
 	waitForEnter()
@@ -236,18 +249,6 @@ func main() {
 		panic(fmt.Errorf("Error in updating the Deployment object - %v\n", retryErr))
 	}
 	fmt.Printf("Updated Deployment - Name: %q, UID: %q\n", resultDeployment.GetObjectMeta().GetName(), resultDeployment.GetObjectMeta().GetUID())
-
-	//create or patch deployment via appscode/kutil
-	waitForEnter()
-	fmt.Println("Patching Deployment...")
-	deploymentPatch, kutilVerb, kutilErr := appsv1Kutil.CreateOrPatchDeployment(clientset, deployment.ObjectMeta, func(deploymentTransformed *appsv1.Deployment) *appsv1.Deployment {
-		deploymentTransformed.Spec.Replicas = int32ptr(4)
-		return deploymentTransformed
-	})
-	if kutilErr != nil {
-		panic(fmt.Errorf("Error while patching Deployment - %v\n", kutilErr))
-	}
-	fmt.Printf("%v - Name: %q, UID: %q\n", kutilVerb, deploymentPatch.GetObjectMeta().GetName(), deploymentPatch.GetObjectMeta().GetUID())
 
 	//list pv via List Method
 	waitForEnter()
